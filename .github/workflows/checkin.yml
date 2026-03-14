@@ -2,7 +2,15 @@ name: AnyRouter 自动签到
 on:
   schedule:
     - cron: '0 */6 * * *'
+  # ================= 新增：手动运行时的测试开关 =================
   workflow_dispatch:
+    inputs:
+      test_fail:
+        description: '🧪 测试模式：强制中断工作流以测试 Telegram 失败通知'
+        required: false
+        type: boolean
+        default: false
+  # ==============================================================
 
 jobs:
   checkin:
@@ -68,8 +76,18 @@ jobs:
         key: balance-hash-${{ github.sha }}
         restore-keys: |
           balance-hash-
-          
+
+    # ================= 新增：拦截器（测试模式专用） =================
+    - name: 🧪 模拟执行失败
+      if: inputs.test_fail == true
+      run: |
+        echo "🚨 检测到开启了测试模式！"
+        echo "正在强制退出并抛出错误，以触发后续的 Telegram 通知..."
+        exit 1
+    # ================================================================
+
     - name: 执行签到
+      # 如果上面那步退出了（exit 1），这一步就会被自动跳过，直接进入后面的 failure() 步骤
       env:
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
@@ -93,15 +111,14 @@ jobs:
       run: |
         uv run checkin.py
 
-    # ================= 新增：Telegram 失败通知机制 =================
     - name: 发送 Telegram 失败通知
-      if: failure() # 只有"执行签到"报错才会触发
+      if: failure()
       env:
         TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         $run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-        $message = "🚨 【AnyRouter 自动签到】任务执行失败！`n`n⚠️ 原因：可能是 Cookie 已失效，请向你的机器人发送新 Cookie。`n🔗 运行日志：$run_url"
+        $message = "🚨 【AnyRouter 自动签到】任务执行失败！`n`n⚠️ 原因：可能是 Cookie 已失效，或者您触发了测试模式。`n🔗 运行日志：$run_url"
         
         $payload = @{
             chat_id = "$env:TG_CHAT"
@@ -109,7 +126,6 @@ jobs:
         } | ConvertTo-Json -Depth 2
         
         Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TG_TOKEN/sendMessage" -Method Post -ContentType "application/json" -Body $payload
-    # ===============================================================
 
     - name: 执行结果
       if: always()

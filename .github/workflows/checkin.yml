@@ -2,7 +2,6 @@ name: AnyRouter 自动签到
 on:
   schedule:
     - cron: '0 */6 * * *'
-  # ================= 新增：手动运行时的测试开关 =================
   workflow_dispatch:
     inputs:
       test_fail:
@@ -10,7 +9,6 @@ on:
         required: false
         type: boolean
         default: false
-  # ==============================================================
 
 jobs:
   checkin:
@@ -77,17 +75,14 @@ jobs:
         restore-keys: |
           balance-hash-
 
-    # ================= 新增：拦截器（测试模式专用） =================
     - name: 🧪 模拟执行失败
       if: inputs.test_fail == true
       run: |
         echo "🚨 检测到开启了测试模式！"
         echo "正在强制退出并抛出错误，以触发后续的 Telegram 通知..."
         exit 1
-    # ================================================================
 
     - name: 执行签到
-      # 如果上面那步退出了（exit 1），这一步就会被自动跳过，直接进入后面的 failure() 步骤
       env:
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
@@ -101,8 +96,8 @@ jobs:
         SERVERPUSHKEY: ${{ secrets.SERVERPUSHKEY }}
         FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
         WEIXIN_WEBHOOK: ${{ secrets.WEIXIN_WEBHOOK }}
-        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         GOTIFY_URL: ${{ secrets.GOTIFY_URL }}
         GOTIFY_TOKEN: ${{ secrets.GOTIFY_TOKEN }}
         GOTIFY_PRIORITY: ${{ secrets.GOTIFY_PRIORITY }}
@@ -111,12 +106,29 @@ jobs:
       run: |
         uv run checkin.py
 
-    - name: 发送 Telegram 失败通知
+    # ================= 新增：调试步骤 + 发送步骤 =================
+    - name: 失败通知 (先检查 Secret)
       if: failure()
       env:
-        TG_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        TG_CHAT: ${{ secrets.TG_CHAT_ID }}
+        TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
+        # 步骤 1：检查 Secret 是否为空
+        if (-Not ([string]::IsNullOrWhiteSpace("$env:TG_TOKEN"))) {
+          echo "✅ Secret [TELEGRAM_BOT_TOKEN] 已成功加载。"
+        } else {
+          echo "::error::❌ Secret [TELEGRAM_BOT_TOKEN] 未能读取或为空！请检查仓库设置。"
+          exit 1
+        }
+        if (-Not ([string]::IsNullOrWhiteSpace("$env:TG_CHAT"))) {
+          echo "✅ Secret [TELEGRAM_CHAT_ID] 已成功加载。"
+        } else {
+          echo "::error::❌ Secret [TELEGRAM_CHAT_ID] 未能读取或为空！请检查仓库设置。"
+          exit 1
+        }
+        
+        # 步骤 2：发送通知
+        echo "准备发送 Telegram 通知..."
         $run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
         $message = "🚨 【AnyRouter 自动签到】任务执行失败！`n`n⚠️ 原因：可能是 Cookie 已失效，或者您触发了测试模式。`n🔗 运行日志：$run_url"
         
@@ -126,6 +138,8 @@ jobs:
         } | ConvertTo-Json -Depth 2
         
         Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TG_TOKEN/sendMessage" -Method Post -ContentType "application/json" -Body $payload
+        echo "✅ 通知已发送。"
+    # ==========================================================
 
     - name: 执行结果
       if: always()

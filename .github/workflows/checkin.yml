@@ -31,21 +31,21 @@ jobs:
         key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
         restore-keys: |
           ${{ runner.os }}-uv-
-
+          
     - name: 安装依赖
       if: steps.uv-cache.outputs.cache-hit != 'true'
       run: |
         echo "缓存未命中，开始安装项目依赖..."
         uv sync
         echo "✅ 环境初始化完成"
-
+        
     - name: 获取 Playwright 版本
       id: playwright-version
       run: |
         $version = uv run python -c "import importlib.metadata; print(importlib.metadata.version('playwright'))"
         echo "version=$version" >> $env:GITHUB_OUTPUT
         echo "Playwright version: $version"
-
+        
     - name: 缓存 Playwright 浏览器
       uses: actions/cache@v4
       id: playwright-cache
@@ -54,13 +54,13 @@ jobs:
         key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
         restore-keys: |
           ${{ runner.os }}-playwright-
-
+          
     - name: 安装 Playwright 浏览器
       if: steps.playwright-cache.outputs.cache-hit != 'true'
       run: |
         echo "缓存未命中，开始安装 Playwright 浏览器..."
         uv run playwright install chromium --with-deps
-
+        
     - name: 恢复余额历史缓存
       uses: actions/cache@v4
       with:
@@ -68,7 +68,7 @@ jobs:
         key: balance-hash-${{ github.sha }}
         restore-keys: |
           balance-hash-
-
+          
     - name: 执行签到
       env:
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
@@ -92,6 +92,24 @@ jobs:
         BARK_SERVER: ${{ secrets.BARK_SERVER }}
       run: |
         uv run checkin.py
+
+    # ================= 新增：Telegram 失败通知机制 =================
+    - name: 发送 Telegram 失败通知
+      if: failure() # 只有"执行签到"报错才会触发
+      env:
+        TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        $run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+        $message = "🚨 【AnyRouter 自动签到】任务执行失败！`n`n⚠️ 原因：可能是 Cookie 已失效，请向你的机器人发送新 Cookie。`n🔗 运行日志：$run_url"
+        
+        $payload = @{
+            chat_id = "$env:TG_CHAT"
+            text = $message
+        } | ConvertTo-Json -Depth 2
+        
+        Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TG_TOKEN/sendMessage" -Method Post -ContentType "application/json" -Body $payload
+    # ===============================================================
 
     - name: 执行结果
       if: always()

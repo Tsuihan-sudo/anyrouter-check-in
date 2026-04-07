@@ -1,11 +1,11 @@
 name: AnyRouter 自动签到
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       test_fail:
-        description: '🧪 测试模式：强制中断工作流以测试 Telegram 失败通知'
+        description: "🧪 测试模式：强制中断工作流以测试 Telegram 失败通知"
         required: false
         type: boolean
         default: false
@@ -17,132 +17,201 @@ jobs:
     env:
       PYTHONIOENCODING: utf-8
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: astral-sh/setup-uv@v3
-      with:
-        version: "latest"
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
 
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: 缓存 UV 依赖
-      uses: actions/cache@v4
-      id: uv-cache
-      with:
-        path: |
-          ~/.cache/uv
-          .venv
-        key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-uv-
-          
-    - name: 安装依赖
-      if: steps.uv-cache.outputs.cache-hit != 'true'
-      run: |
-        echo "缓存未命中，开始安装项目依赖..."
-        uv sync
-        echo "✅ 环境初始化完成"
-        
-    - name: 获取 Playwright 版本
-      id: playwright-version
-      run: |
-        $version = uv run python -c "import importlib.metadata; print(importlib.metadata.version('playwright'))"
-        echo "version=$version" >> $env:GITHUB_OUTPUT
-        echo "Playwright version: $version"
-        
-    - name: 缓存 Playwright 浏览器
-      uses: actions/cache@v4
-      id: playwright-cache
-      with:
-        path: ~\AppData\Local\ms-playwright
-        key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
-        restore-keys: |
-          ${{ runner.os }}-playwright-
-          
-    - name: 安装 Playwright 浏览器
-      if: steps.playwright-cache.outputs.cache-hit != 'true'
-      run: |
-        echo "缓存未命中，开始安装 Playwright 浏览器..."
-        uv run playwright install chromium --with-deps
-        
-    - name: 恢复余额历史缓存
-      uses: actions/cache@v4
-      with:
-        path: balance_hash.txt
-        key: balance-hash-${{ github.sha }}
-        restore-keys: |
-          balance-hash-
+      - name: 缓存 UV 依赖
+        uses: actions/cache@v4
+        id: uv-cache
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
 
-    - name: 🧪 模拟执行失败
-      if: inputs.test_fail == true
-      run: |
-        echo "🚨 检测到开启了测试模式！"
-        echo "正在强制退出并抛出错误，以触发后续的 Telegram 通知..."
-        exit 1
+      - name: 安装依赖
+        if: steps.uv-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "缓存未命中，开始安装项目依赖..."
+          uv sync
+          echo "✅ 环境初始化完成"
 
-    - name: 执行签到
-      env:
-        ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
-        PROVIDERS: ${{ secrets.PROVIDERS }}
-        DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
-        EMAIL_USER: ${{ secrets.EMAIL_USER }}
-        EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-        EMAIL_TO: ${{ secrets.EMAIL_TO }}
-        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-        CUSTOM_SMTP_SERVER: ${{ secrets.CUSTOM_SMTP_SERVER }}
-        PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-        SERVERPUSHKEY: ${{ secrets.SERVERPUSHKEY }}
-        FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
-        WEIXIN_WEBHOOK: ${{ secrets.WEIXIN_WEBHOOK }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        GOTIFY_URL: ${{ secrets.GOTIFY_URL }}
-        GOTIFY_TOKEN: ${{ secrets.GOTIFY_TOKEN }}
-        GOTIFY_PRIORITY: ${{ secrets.GOTIFY_PRIORITY }}
-        BARK_KEY: ${{ secrets.BARK_KEY }}
-        BARK_SERVER: ${{ secrets.BARK_SERVER }}
-      run: |
-        uv run checkin.py
+      - name: 获取 Playwright 版本
+        id: playwright-version
+        run: |
+          $version = uv run python -c "import importlib.metadata; print(importlib.metadata.version('playwright'))"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Playwright version: $version"
 
-    # ================= 新增：调试步骤 + 发送步骤 =================
-    - name: 失败通知 (先检查 Secret)
-      if: failure()
-      env:
-        TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        # 步骤 1：检查 Secret 是否为空
-        if (-Not ([string]::IsNullOrWhiteSpace("$env:TG_TOKEN"))) {
-          echo "✅ Secret [TELEGRAM_BOT_TOKEN] 已成功加载。"
-        } else {
-          echo "::error::❌ Secret [TELEGRAM_BOT_TOKEN] 未能读取或为空！请检查仓库设置。"
+      - name: 缓存 Playwright 浏览器
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~\AppData\Local\ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: 安装 Playwright 浏览器
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "缓存未命中，开始安装 Playwright 浏览器..."
+          uv run playwright install chromium --with-deps
+
+      - name: 恢复余额历史缓存
+        uses: actions/cache@v4
+        with:
+          path: balance_hash.txt
+          key: balance-hash-${{ github.sha }}
+          restore-keys: |
+            balance-hash-
+
+      - name: 获取当前周数 (用于每周总结)
+        id: week-num
+        run: |
+          $week = Get-Date -UFormat %V
+          $year = Get-Date -UFormat %Y
+          echo "week=$year-W$week" >> $env:GITHUB_OUTPUT
+
+      - name: 恢复每周状态缓存
+        uses: actions/cache@v4
+        with:
+          path: weekly_stats.json
+          key: weekly-stats-${{ steps.week-num.outputs.week }}
+
+      - name: 🧪 模拟执行失败
+        if: inputs.test_fail == true
+        run: |
+          echo "🚨 检测到开启了测试模式！"
+          echo "正在强制退出并抛出错误，以触发后续的 Telegram 通知..."
           exit 1
-        }
-        if (-Not ([string]::IsNullOrWhiteSpace("$env:TG_CHAT"))) {
-          echo "✅ Secret [TELEGRAM_CHAT_ID] 已成功加载。"
-        } else {
-          echo "::error::❌ Secret [TELEGRAM_CHAT_ID] 未能读取或为空！请检查仓库设置。"
-          exit 1
-        }
-        
-        # 步骤 2：发送通知
-        echo "准备发送 Telegram 通知..."
-        $run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-        $message = "🚨 【AnyRouter 自动签到】任务执行失败！`n`n⚠️ 原因：可能是 Cookie 已失效，或者您触发了测试模式。`n🔗 运行日志：$run_url"
-        
-        $payload = @{
-            chat_id = "$env:TG_CHAT"
-            text = $message
-        } | ConvertTo-Json -Depth 2
-        
-        Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TG_TOKEN/sendMessage" -Method Post -ContentType "application/json" -Body $payload
-        echo "✅ 通知已发送。"
-    # ==========================================================
 
-    - name: 执行结果
-      if: always()
-      run: |
-        echo "签到任务执行完成"
-        echo "时间: $(Get-Date)"
+      - name: 执行签到
+        env:
+          ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
+          PROVIDERS: ${{ secrets.PROVIDERS }}
+          # 移除了所有通知用的 Secret 以屏蔽脚本自带的频繁通知逻辑。我们使用下方自定义的工作流步骤来处理失败和每周总结。
+        run: |
+          # 运行签到并把日志同时输出到终端和文件，方便后续解析每周状态
+          uv run checkin.py > checkin_log.txt 2>&1
+          $exitCode = $LASTEXITCODE
+          Get-Content checkin_log.txt
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      # ================= 新增：调试步骤 + 发送步骤 =================
+      - name: 失败通知 (先检查 Secret)
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # 步骤 1：检查 Secret 是否为空
+          if (-Not ([string]::IsNullOrWhiteSpace("$env:TG_TOKEN"))) {
+            echo "✅ Secret [TELEGRAM_BOT_TOKEN] 已成功加载。"
+          } else {
+            echo "::error::❌ Secret [TELEGRAM_BOT_TOKEN] 未能读取或为空！请检查仓库设置。"
+            exit 1
+          }
+          if (-Not ([string]::IsNullOrWhiteSpace("$env:TG_CHAT"))) {
+            echo "✅ Secret [TELEGRAM_CHAT_ID] 已成功加载。"
+          } else {
+            echo "::error::❌ Secret [TELEGRAM_CHAT_ID] 未能读取或为空！请检查仓库设置。"
+            exit 1
+          }
+
+          # 步骤 2：发送通知
+          echo "准备发送 Telegram 通知..."
+          $run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $message = "🚨 【AnyRouter 自动签到】任务执行失败！`n`n⚠️ 原因：可能是 Cookie 已失效，或者您触发了测试模式。`n🔗 运行日志：$run_url"
+
+          $payload = @{
+              chat_id = "$env:TG_CHAT"
+              text = $message
+          } | ConvertTo-Json -Depth 2
+
+          Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TG_TOKEN/sendMessage" -Method Post -ContentType "application/json" -Body $payload
+          echo "✅ 通知已发送。"
+      # ==========================================================
+
+      - name: 解析日志并处理每周成功通知
+        if: success()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          $log = Get-Content checkin_log.txt
+          $accounts_balance = @{}
+          $accounts_used = @{}
+          $current_account = "default"
+
+          # 提取每个账号的最新余额和消耗情况
+          foreach ($line in $log) {
+              if ($line -match '\[PROCESSING\].*?([a-zA-Z0-9_-]+)') {
+                  $current_account = $matches[1]
+              }
+              if ($line -match ':money: Current balance: \$([\d.]+), Used: \$([\d.]+)') {
+                  $accounts_balance[$current_account] = [double]$matches[1]
+                  $accounts_used[$current_account] = [double]$matches[2]
+              }
+          }
+
+          $total_balance = 0
+          $total_used = 0
+          foreach ($k in $accounts_balance.Keys) {
+              $total_balance += $accounts_balance[$k]
+              $total_used += $accounts_used[$k]
+          }
+
+          # 初始化本周初状态记录
+          if (-not (Test-Path weekly_stats.json)) {
+              $stats = @{
+                  start_balance = $total_balance
+                  start_used = $total_used
+              }
+              $stats | ConvertTo-Json | Out-File weekly_stats.json -Encoding utf8
+              $start_balance = $total_balance
+          } else {
+              $existing = Get-Content weekly_stats.json -Raw | ConvertFrom-Json
+              $start_balance = $existing.start_balance
+          }
+
+          # 检查是否应该发送通知：周日，并且是当天的头几次运行（Hour < 6）以确保每周只发一次
+          $now = Get-Date
+          if ($now.DayOfWeek -eq [DayOfWeek]::Sunday -and $now.Hour -lt 6) {
+              echo "✅ 达到每周通知条件，准备发送 Telegram 通知..."
+              $balance_change = $total_balance - $start_balance
+              
+              # 格式化变化量，带上加减号
+              $change_sign = if ($balance_change -gt 0) { "+" } else { "" }
+              
+              $message = "✅ 【AnyRouter 自动签到】本周运行总结！`n`n"
+              $message += "💵 当前总余额: `$$total_balance`n"
+              $message += "📈 本周余额变化: $change_sign`$$balance_change`n"
+              $message += "📊 累计总消耗: `$$total_used`n`n"
+              $message += "💡 提示：签到任务每天都在后台正常运行，为减少打扰，成功消息现改为每周日统一汇总汇报。"
+              
+              $payload = @{
+                  chat_id = "$env:TG_CHAT"
+                  text = $message
+              } | ConvertTo-Json -Depth 2
+
+              Invoke-RestMethod -Uri "https://api.telegram.org/bot$env:TG_TOKEN/sendMessage" -Method Post -ContentType "application/json" -Body $payload
+              echo "✅ 每周总结通知已发送。"
+          } else {
+              echo "✅ 签到成功。当前非周日结算时间，跳过消息打扰。"
+          }
+
+      - name: 执行结果
+        if: always()
+        run: |
+          echo "签到任务执行完成"
+          echo "时间: $(Get-Date)"
